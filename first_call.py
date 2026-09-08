@@ -59,7 +59,7 @@ for c in cases:
             raise ValueError(f"Model không trả về đúng định dạng JSON: {text[:100]}") from e
         total_in += message.usage.input_tokens
         total_out += message.usage.output_tokens
-        print(context)
+        print(f"Test case: {context}")
         print(f"Hợp lệ: {len(valid)}")
         print(f"Không hợp lệ: {len(invalid)}")
         if invalid:
