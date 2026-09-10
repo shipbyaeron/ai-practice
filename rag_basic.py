@@ -3,6 +3,7 @@ import torch
 import anthropic
 import os
 from dotenv import load_dotenv
+from chunking import build_chunks, chunks_by_content
 
 load_dotenv()
 
@@ -14,44 +15,8 @@ client = anthropic.Anthropic(
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def word_count(m):
-    words = m.strip().split(" ")
-    return len(words)
-
-with open("yield_radar.txt", "r", encoding="utf-8-sig") as f:
-    content = f.read()
-
-files = []
-
-sections = content.split("—--------------------")
-
-for s in sections:
-    small_chunks = [line for line in s.split("\n") if line.strip()]
-    final_chunks = []
-    for k in small_chunks:
-        if word_count(k) < 150:
-            final_chunks.append(k)
-        else:
-            sentences = k.split(".")
-            final_chunks.extend(sentences)
-    title = small_chunks[0]
-    len_small = len(final_chunks)
-    i = 1
-    while i < len_small:
-        current_group = [final_chunks[i]]
-        current_length = word_count(final_chunks[i])
-        j = i + 1
-        while j < len_small:
-            next_length = word_count(final_chunks[j])
-            if current_length + next_length > 150:
-                break
-            current_group.append(final_chunks[j])
-            current_length += next_length
-            j += 1
-        merged_text = " ".join(current_group)
-        text_to_embedded = f"{title}\n\n{merged_text}"
-        files.append(text_to_embedded)
-        i = j
+# files = build_chunks("yield_radar.txt")
+files = chunks_by_content("yield_radar.txt")
 
 # question = "How many audits has Superform done?"
 question = "What is the price of Bitcoin today?"
@@ -100,3 +65,8 @@ if response.stop_reason == "end_turn":
 else:
     error = response.stop_reason
     print(f"The program has stopped. The stop reason: {error}.")
+
+for index, chunk in enumerate(files):
+    print(f"=========CHUNK {index}=========\n")
+    print(f"{chunk}\n")
+    print(f"---------------------------------\n")
