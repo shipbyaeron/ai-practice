@@ -3,6 +3,7 @@ import anthropic
 import requests
 
 from dotenv import load_dotenv
+from rag_basic import search_articles
 
 load_dotenv()
 
@@ -38,29 +39,33 @@ def get_pnl():
         raise ToolError(f"Something went wrong with the get_pnl API endpoint :( Status code: {response.status_code}.")
     return data
 
+# USER_QUESTION = "Am I up or down on my portfolio?"
+# USER_QUESTION = "What does the Yield Radar say about the Balancer audit?"
+# USER_QUESTION = "How many strategies are there in the May 22 Yield Radar? What are they and which chains are the strategies running on?"
+USER_QUESTION = "Who created Bitcoin"
+
+
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_KEY")
 API_URL = os.getenv("API_URL")
 APP_API_KEY = os.getenv("APP_API_KEY")
 TOOL_FUNCTIONS = {
     "get_price": get_price,
     "get_transactions": get_transactions,
-    "get_pnl": get_pnl
+    "get_pnl": get_pnl,
+    "search_articles": search_articles
 }
 
 SYSTEM_PROMPT = (
-    '[ROLE]: You are an blockchain expert. You know everything about the blockchain industry.'
-    '[CONTEXT] You will receive a question about crypto in general.'
-    '[INSTRUCTION] If the question relating to a coin price, you will need to take from the question the coin name, then use the tool to get the price. '
-    'The price format: i) If the price > 1000, no digit. ii) From 1 to 1000, two digit precide. iii) From 0 to 1, always has 2 digits precise. '
+    '[ROLE]: You are my assisstant helping me answer my questions.' 
+    'Your knowledge is limited to the tools and the sources I give you. Nothing else.'
+    'It should be fine to say you do not know something if the tools and sources I give you do not cover the information you need to answer it.'
+    '[CONTEXT]: You will receive a question about crypto in general.'
+    '[INSTRUCTION]: If the question relating to a coin price, you will need to take from the question the coin name, then use the tool to get the price. '
+    'The price format: i) If the price > 1000, no digit. ii) From 1 to 1000, two digit precise. iii) From 0 to 1, always has 2 digits precise. '
     'If it has 0 after the ., it should be like this 0.023 or 0.00032.' 
-
     'If the question about portfolio, you will need to use the get_transaction tool. It will give you all the transactions log. '
     'If you need the pnl information of each position or the whole portfolio, use the get_pnl tool.'
 )
-# user_question = "How much is BTC now?"
-# user_question = "How much are BTC and ETH now?"
-# user_question = "Which is more expensive, BTC or ETH? And what's the percentage difference?"
-user_question = "Am I up or down on my portfolio?"
 
 client = anthropic.Anthropic(
     api_key=ANTHROPIC_KEY,
@@ -104,10 +109,26 @@ tools = [
             "type": "object",
             "properties": {},
         },
+    },
+    {
+        "name": "search_articles",
+        "description": ("Only use this tool when you need to search for information in my own Digest crypto writing."
+        "The output of this tool is top few paragraphs that have the information you need."
+        "Use only that information to answer the question"),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "user_question": {
+                    "type": "string",
+                    "description": "the user's original question"
+                }
+            },
+            "required": ["user_question"]
+        },
     }
 ]
 
-messageList = [{"role": "user","content": user_question}]
+messageList = [{"role": "user","content": USER_QUESTION}]
 
 turn = 0
 
