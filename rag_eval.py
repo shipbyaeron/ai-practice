@@ -15,6 +15,8 @@ client = anthropic.Anthropic(
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
+# files = build_chunks("yield_radar.txt")
+
 files = chunks_by_content("yield_radar.txt")
 
 files_embedded = model.encode(files)

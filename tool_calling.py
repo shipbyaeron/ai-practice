@@ -57,14 +57,27 @@ TOOL_FUNCTIONS = {
 
 SYSTEM_PROMPT = (
     '[ROLE]: You are my assisstant helping me answer my questions.' 
-    'Your knowledge is limited to the tools and the sources I give you. Nothing else.'
-    'It should be fine to say you do not know something if the tools and sources I give you do not cover the information you need to answer it.'
-    '[CONTEXT]: You will receive a question about crypto in general.'
-    '[INSTRUCTION]: If the question relating to a coin price, you will need to take from the question the coin name, then use the tool to get the price. '
+    'Your knowledge is limited to the tools and the sources I give you.'
+    'For every questions, always use the search_articles tool and read all my research carefully from the top to the bottom to see if the information you need to answer the question is there.' 
+    'You have to make sure you understand the meaning of the whole article and the question before answering any questions.'
+    'If you do not find the information, read it the second time. Some information might be buried in my research since it is often a long article'
+    'Only conclude you do not know once you scanned through all my research and there is no provided information about it.'
+    
+    '[CONTEXT]: '
+    'You will receive a question about crypto in general.'
+
+    '[INSTRUCTION]:'
+    'Workflow: First you need to analyze the question, understand it deeply, then search for the information you need to answer the question.'
+    'Overall: Use the tools you need, take the tool result to answer the question, and that is it.'
+    'If the question relating to a coin price, you will need to take from the question the coin name, then use the tool to get the price. '
     'The price format: i) If the price > 1000, no digit. ii) From 1 to 1000, two digit precise. iii) From 0 to 1, always has 2 digits precise. '
     'If it has 0 after the ., it should be like this 0.023 or 0.00032.' 
     'If the question about portfolio, you will need to use the get_transaction tool. It will give you all the transactions log. '
-    'If you need the pnl information of each position or the whole portfolio, use the get_pnl tool.'
+    'If you need the pnl information of each position or the whole portfolio, use the get_pnl tool.' 
+
+    '[CONSTRAINTS] Do not add any other type of information based on your training memory or general knowledge. ' 
+    'If you do not have enough context to answer the question, I want the response only has 1 sentence which is "I do not have enough context to answer that question."'
+    'Otherwise, if you have enough context to answer it, do not hesitate to give more information (limit to the knowledge and tool result you have)'
 )
 
 client = anthropic.Anthropic(
@@ -112,7 +125,7 @@ tools = [
     },
     {
         "name": "search_articles",
-        "description": ("Only use this tool when you need to search for information in my own Digest crypto writing."
+        "description": ("When you need to search for information in my own crypto writing research, use this tool."
         "The output of this tool is top few paragraphs that have the information you need."
         "Use only that information to answer the question"),
         "input_schema": {
@@ -128,60 +141,63 @@ tools = [
     }
 ]
 
-messageList = [{"role": "user","content": USER_QUESTION}]
+def run_agent(user_question, verbose=False):
+    messageList = [{"role": "user","content": user_question}]
+    turn = 0
+    while True:
+        turn += 1
+        if turn > 10:
+            return f"There has been too many loops already :( Pls check the question logic or tools and run again."
 
-turn = 0
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            tools=tools,
+            system=SYSTEM_PROMPT,
+            messages=messageList,
+        )
 
-while True:
-    turn += 1
-    if turn > 10:
-        print(f"There has been too many loops already :( Pls check the question logic or tools and run again.")
-        break
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        tools=tools,
-        system=SYSTEM_PROMPT,
-        messages=messageList,
-    )
-
-    print(f"turn {turn} stop_reason={response.stop_reason}")
-    
-    if response.stop_reason == "tool_use": 
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                if block.name not in TOOL_FUNCTIONS:
-                    api_result = f"Unknown tool: {block.name}"
-                    is_error = True
-                else:
-                    fn = TOOL_FUNCTIONS[block.name] 
-                    try:
-                        api_result = fn(**block.input)
-                        is_error = False
-                    except ToolError as e:
-                        api_result = str(e)
+        if verbose:
+            print(f"turn {turn} stop_reason={response.stop_reason}")
+        
+        if response.stop_reason == "tool_use": 
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    if block.name not in TOOL_FUNCTIONS:
+                        api_result = f"Unknown tool: {block.name}"
                         is_error = True
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": str(api_result),
-                    "is_error": is_error
-                })
-        messageList.append({"role": "assistant", "content": response.content})
-        messageList.append({"role": "user", "content": tool_results})
+                    else:
+                        fn = TOOL_FUNCTIONS[block.name] 
+                        try:
+                            api_result = fn(**block.input)
+                            is_error = False
+                        except ToolError as e:
+                            api_result = str(e)
+                            is_error = True
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": str(api_result),
+                        "is_error": is_error
+                    })
+            messageList.append({"role": "assistant", "content": response.content})
+            messageList.append({"role": "user", "content": tool_results})
 
-    elif response.stop_reason == "end_turn":
-        texts = []
-        for block in response.content:
-            if block.type == "text":
-                texts.append(block.text)
-        final_text = "".join(texts)
-        print(final_text)
-        break
+        elif response.stop_reason == "end_turn":
+            texts = []
+            for block in response.content:
+                if block.type == "text":
+                    texts.append(block.text)
+            final_text = "".join(texts)
+            return final_text
+        else:
+            error = response.stop_reason
+            return f"The program has stopped. The stop reason is {error}."
 
-    else:
-        error = response.stop_reason
-        print (f"The program has stopped. The stop reason is {error}.") 
-        break
+def main():
+    final_text = run_agent(USER_QUESTION, verbose=True)
+    print(final_text)
+
+if __name__ == "__main__":
+    main()
