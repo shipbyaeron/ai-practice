@@ -4,6 +4,28 @@ def word_count(m):
     words = m.strip().split(" ")
     return len(words)
 
+def portion_split(paragraph: str) -> list[str]:
+    final_split = []
+    WORD_LIMIT = 150
+    sentences = paragraph.split(".")
+    len_sen = len(sentences)
+    i = 0
+    while i < len_sen:
+        current_group = [sentences[i]]
+        current_length = word_count(sentences[i])
+        j = i + 1
+        while j < len_sen:
+            next_length = word_count(sentences[j])
+            if current_length + next_length > WORD_LIMIT:
+                break
+            current_group.append(sentences[j])
+            current_length += next_length
+            j += 1
+        final_text = " ".join(current_group)
+        final_split.append(final_text)
+        i = j
+    return final_split
+
 def build_chunks(filepath: str) -> list[str]:
     files = []
     with open(filepath, "r", encoding="utf-8-sig") as f:
@@ -40,47 +62,28 @@ def build_chunks(filepath: str) -> list[str]:
             i = j
     return files
 
-def chunks_by_content(filepath:str) -> list[str]:
-    files = []
-    titles = []
+def chunks_by_section(filepath:str) -> list[str]:
+    chunks = []
+    WORD_LIMIT = 150
     with open(filepath, "r", encoding="utf-8-sig") as f:
         content = f.read()
 
     sections = content.split("—--------------------")
 
-    for s in sections:
-        small_parts = [line for line in s.split("\n") if line.strip()]
-        final_parts = []
-        for k in small_parts:
-            if word_count(k) < 150:
-                final_parts.append(k)
-            else:
-                sentences = k.split(".")
-                final_parts.extend(sentences)
-        title = small_parts[0]
-        titles.append(title)
-
-    for idx in range(0,len(sections)):
-        text = sections[idx]
-        if idx == 0:
-            pattern = r"^(.*?)(Overview:.*?)(Our Approach:.*)$"
-            matches = re.search(pattern, text, re.DOTALL)
-            chunks = [matches.group(i).strip() for i in range(1,matches.re.groups+1)]
-            for chunk in chunks:
-                final_text = f"{titles[idx]}\n\n{chunk}"
-                files.append(final_text)
-        if idx == 1:
-            pattern = r"^(.*?)(Steps:.*?)(Notes:.*?)(Yield Source:.*?)(Some key notes worth noting:.*?)$"
-            matches = re.search(pattern, text, re.DOTALL)
-            chunk_1 = [matches.group(i).strip() for i in range(2,matches.re.groups+1)]
-            for c in chunk_1:
-                final_text = f"{titles[idx]}\n\n{c}"
-                files.append(final_text)
-        if idx == 2:
-            pattern = r"^(.*?)(Steps:.*?)(Notes:.*?)(Yield Source:.*?)(Key things to watch:.*?)$"
-            matches = re.search(pattern, text, re.DOTALL)
-            chunk_2 = [matches.group(i).strip() for i in range(2,matches.re.groups+1)]
-            for c in chunk_2:
-                final_text = f"{titles[idx]}\n\n{c}"
-                files.append(final_text)
-    return files
+    for section in sections:
+        if section.strip():
+            small_parts = [line for line in section.split("\n") if line.strip()]
+            final_parts = []
+            for k in small_parts:
+                if word_count(k) <= WORD_LIMIT:
+                    final_parts.append(k)
+                else:
+                    split_k = portion_split(k)
+                    final_parts.extend(split_k)
+            title = final_parts[0]
+            section_length = len(final_parts)
+            for i in range (1, section_length):
+                final_text = f"{title}\n\n{final_parts[i]}"
+                chunks.append(final_text)
+    
+    return chunks

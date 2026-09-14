@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import anthropic
 import torch
-from chunking import build_chunks, chunks_by_content
+from chunking import build_chunks, chunks_by_section
 
 load_dotenv()
 
@@ -15,105 +15,127 @@ client = anthropic.Anthropic(
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# files = build_chunks("yield_radar.txt")
-
-files = chunks_by_content("yield_radar.txt")
-
-files_embedded = model.encode(files)
-
-# EVAL_SET = [
-#     {"question": 'What are the yield sources of the “Flagship USDC SuperVault”?',
-#         "expected_chunks": [1]},
-#     {"question": 'How old is the “Flagship USDC SuperVault”?',
-#         "expected_chunks": [1]},
-#     {"question": 'What are the base yield of the “Flagship USDC SuperVault”?',
-#         "expected_chunks": [1]},
-#     {"question": 'What are the main exposures of the “Flagship USDC SuperVault”?',
-#         "expected_chunks": [2]},
-#     {"question": 'How many days does it take to unstake sUP rewards?',
-#         "expected_chunks": [2]},
-#     {"question": 'What are the three stable coins that are allowed to provide liquidity to the pool in the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-#         "expected_chunks": [3]},
-#     {"question": 'When will you know you have finished setting up the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-#         "expected_chunks": [3]},
-#     {"question": 'Who did the latest audit for Balancer?',
-#         "expected_chunks": [3]},
-#     {"question": 'What are the yield sources of the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-#         "expected_chunks": [4, 5]},
-#     {"question": 'How much yield does Merlk incentives contribute to the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-#         "expected_chunks": [5]},
-# ]
-
-EVAL_SET = [
+EVAL_SET_CHUNKS_BY_SECTION = [
     {"question": 'What are the yield sources of the “Flagship USDC SuperVault”?',
-        "expected_chunks": [5]},
+        "must_contain": [["base yield"], ["sUP incentives"]]},
     {"question": 'How old is the “Flagship USDC SuperVault”?',
-        "expected_chunks": [4]},
+        "must_contain": [["5 months", "five months"]]},
     {"question": 'What are the base yield of the “Flagship USDC SuperVault”?',
-        "expected_chunks": [5]},
+        "must_contain": [["3.29%", "three point twenty nine percent"]]},
     {"question": 'What are the main exposures of the “Flagship USDC SuperVault”?',
-        "expected_chunks": [5]},
+        "must_contain": [["Gauntlet USDC Prime", "Gauntlet USDC"], ["Steakhouse USDC on Morpho", "Steakhouse USDC"]]},
     {"question": 'How many days does it take to unstake sUP rewards?',
-        "expected_chunks": [6]},
+        "must_contain": [["14-day", "14 days", "fourteen days"]]},
     {"question": 'What are the three stable coins that are allowed to provide liquidity to the pool in the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-        "expected_chunks": [7]},
+        "must_contain": [["USDT0"], ["AUSD"], ["USDC"]]},
     {"question": 'When will you know you have finished setting up the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-        "expected_chunks": [7]},
+        "must_contain": [["BPT", "Balancer Pool Tokens"]]},
     {"question": 'Who did the latest audit for Balancer?',
-        "expected_chunks": [8]},
+        "must_contain": [["Centora"]]},
     {"question": 'What are the yield sources of the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-        "expected_chunks": [9]},
+        "must_contain": [["Swap fees"], ["Yield-bearing stablecoins", "yield bearing stablecoins"], ["Merkl incentives", "Merkl"]]},
     {"question": 'How much yield does Merlk incentives contribute to the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
-        "expected_chunks": [9]},
+        "must_contain": [["10-11%", "ten to eleven percent", "10 to 11%", "10 - 11%", "10% to 11%"]]},
 ]
 
-expected_chunks_rank = []
+chunks = chunks_by_section("yield_radar.txt")
+chunks_embedded = model.encode(chunks)
+chunks_clean = [chunk.strip().lower() for chunk in chunks]
+
+TOP_K = 3
+deepest_chunks_rank = []
 total_pass = 0
 total_fail = 0
-for i in range (0, len(EVAL_SET)):
-    question = EVAL_SET[i]["question"]
+
+missing_facts_count = 0
+out_of_top_k_count = 0
+
+for i in range (0, len(EVAL_SET_CHUNKS_BY_SECTION)):
+    question = EVAL_SET_CHUNKS_BY_SECTION[i]["question"]
+    must_contain = EVAL_SET_CHUNKS_BY_SECTION[i]["must_contain"]
+    must_contain_clean = [[k.strip().lower() for k in sublist] for sublist in must_contain]
     question_embedded = model.encode(question)
-    similarity = util.cos_sim(files_embedded, question_embedded)
+    similarity = util.cos_sim(chunks_embedded, question_embedded)
     scores = similarity.squeeze()
+
+    # List of the similarity scores of chunks (in the order of the original article)
     scores_list = [s.item() for s in scores]
+    # The sorted indices by similarity scores (indices is also in the order of the original article)
     sorted_indices = torch.argsort(scores, descending=True).tolist()
-    values, indices = torch.topk(scores, k=3)
-    top_chunks_indices = [k.item() for k in indices]
-    top_chunks_scores = [round(score.item(), 2) for score in values]
-    expected_chunks = EVAL_SET[i]["expected_chunks"]
-    missed_chunks = []
-    total = len(expected_chunks)
-    correct = 0
-    for m in expected_chunks:
-        if m in top_chunks_indices:
-            correct += 1
-        else:
-            missed_chunks.append(m)
-    print(f"==========QUESTION {i+1}==========")
-    print(f"> Top chunks: {top_chunks_indices}")
-    print(f"> Top chunks score: {top_chunks_scores}")
-    print(f"> Correction rate: {correct}/{total}={(correct/total):.2%}")
-    if correct == total:
+
+    indices = torch.topk(scores, k=TOP_K).indices
+    top_k_indices = [k.item() for k in indices]
+
+    values = torch.topk(scores, k=TOP_K).values
+    top_k_scores = [f"{k.item():.2f}" for k in values]
+
+    key_found_infor = []
+    missing_keys = []
+
+    for key in must_contain_clean:
+        for rank, chunk_index in enumerate(sorted_indices):
+            check = any(k in chunks_clean[chunk_index] for k in key)
+            if check:
+                key_found_infor.append({
+                        "key_detail": key,
+                        "chunk_index": chunk_index,
+                        "chunk_rank": rank + 1
+                    })
+                break
+
+    total_keys_required = len(must_contain_clean)
+    total_key_found = len(key_found_infor)
+
+    key_found_detail_list = [key_found_infor[i]["key_detail"] for i in range (0, total_key_found)]
+    key_found_rank_list = [key_found_infor[i]["chunk_rank"] for i in range (0, total_key_found)]
+
+    for key in must_contain_clean:
+        if key not in key_found_detail_list:
+            missing_keys.append(key)
+
+    if key_found_rank_list:
+        deepest_rank = max(key_found_rank_list)
+        deepest_chunks_rank.append(deepest_rank)
+    else:
+        raise ValueError("Zero keys found. Pls check the question or the must_contain keys list again!")
+
+    if deepest_rank <= TOP_K and total_key_found == total_keys_required:
         result = "Pass ✅"
         total_pass += 1
-        print(f"> Retrieval result: {result}")
-    elif correct < total:
+    else:
         result = "Fail ❌"
         total_fail += 1
-        print(f"> Retrieval result: {result}")
-        # print(f"> Missed chunks: {missed_chunks}")
-        # for mc in missed_chunks:
-        #     print(f"> Expected chunk {mc} score = {scores_list[mc]:.2f}, rank {sorted_scores.index(scores_list[mc])+1}")
-    else:
-        print(f"We need more chunks to answer this question!")
-    for e in expected_chunks:
-        rank = sorted_indices.index(e) + 1
-        expected_chunks_rank.append(rank)
-        print(f"> Expected chunk {e} -> rank {rank} ({scores_list[e]:.2f})")
+
+    print(f"==========QUESTION {i+1}==========")
+    print(f">> Keys requires ({total_keys_required}):", end="")
+    for key in must_contain:
+        print(f" {key} |", end="")
+    print()
+    for num in range(0, len(must_contain_clean)):
+        fact = must_contain_clean[num]
+        if fact in key_found_detail_list:
+            for m in range(0, len(key_found_infor)):
+                if key_found_infor[m]["key_detail"] == fact:
+                    chunk_rank = key_found_infor[m]["chunk_rank"]
+                    break
+            print(f"# Key {num+1}: rank {chunk_rank}")
+        else:
+            print(f"# Key {num+1}: rank N/A (key not found)")
+    print(f">> Deepest rank: {deepest_rank}")
+    print(f">> Result: {result}")
+    if result == "Fail ❌":
+        if total_key_found == total_keys_required:
+            out_of_top_k_count += 1
+            print(f"# Reason on fail: all found but {deepest_rank} > k({TOP_K})")
+        else:
+            missing_facts_count += 1
+            print(f"# Reason on fail: missing {missing_keys}")
+
 total_ques = total_pass + total_fail
 mean_rank = 0
-for r in expected_chunks_rank:
-    mean_rank += r / len(expected_chunks_rank)
+for r in deepest_chunks_rank:
+    mean_rank += r / len(deepest_chunks_rank)
 print(f"============OVERALL============")
 print(f"> Pass rate: {total_pass}/{total_ques} = {(total_pass/total_ques):.2%}")
 print(f"> Mean rank: {mean_rank}")
+print(f"> Fails by type: {missing_facts_count} missing-fact, {out_of_top_k_count} out-of-top-k")

@@ -3,7 +3,7 @@ import torch
 import anthropic
 import os
 from dotenv import load_dotenv
-from chunking import chunks_by_content
+from chunking import chunks_by_section
 
 load_dotenv()
 
@@ -17,7 +17,7 @@ client = anthropic.Anthropic(
 )
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
-chunks = chunks_by_content(FILE_PATH)
+chunks = chunks_by_section(FILE_PATH)
 chunks_embedded = model.encode(chunks)
 
 def search_articles(user_question: str):
