@@ -8,17 +8,37 @@ from chunking import chunks_by_section
 load_dotenv()
 
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_KEY")
-FILE_PATH = "yield_radar.txt"
 NUM_TOP_CHUNKS = 3
 user_question = "What is the price of Bitcoin today?"
+
+FOLDER_NAME = "articles"
+FILE_NAME = ["yield_radar_may08.txt", "yield_radar_may22.txt", "yield_radar_june19.txt", "yield_radar_july09.txt"]
+FILE_PATH = []
+for file_name in FILE_NAME:
+    file_path = os.path.join(FOLDER_NAME, file_name)
+    FILE_PATH.append(file_path)
 
 client = anthropic.Anthropic(
     api_key=ANTHROPIC_KEY,
 )
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
-chunks = chunks_by_section(FILE_PATH)
-chunks_embedded = model.encode(chunks)
+
+chunks_infor = []
+
+for filepath in FILE_PATH:
+    article_title, filepath_chunks = chunks_by_section(filepath)
+    for chunk in filepath_chunks:
+        chunks_infor.append({
+            "chunk_content": chunk,
+            "file_path": filepath,
+            "article_title": article_title
+        })
+
+# List of chunks of every articles without the file_path
+chunks_list = [chunks_infor[i]["chunk_content"] for i in range (0, len(chunks_infor))]
+
+chunks_embedded = model.encode(chunks_list)
 
 def search_articles(user_question: str):
     question_embedded = model.encode(user_question)
@@ -26,8 +46,13 @@ def search_articles(user_question: str):
     scores_data = all_similarity.squeeze()
     indices = torch.topk(scores_data, k=NUM_TOP_CHUNKS).indices
     top_chunks = []
-    for i in indices:
-        top_chunks.append(chunks[i.item()])
+    sources_list = []
+    for indice in indices:
+        idx = indice.item()
+        chunk = chunks_infor[idx]["chunk_content"]  
+        source = chunks_infor[idx]["article_title"]
+        sources_list.append(source)
+        top_chunks.append(f"> Source: {source}\n> Chunk content: {chunk}")
     context = "\n-----------\n".join(top_chunks)
     return context
 
@@ -54,11 +79,11 @@ def main():
             if block.type == "text":
                 text.append(block.text)
         final_text = " ".join(text)
-        print(final_text)
+        print(f"Response: {final_text}")
     else:
         error = response.stop_reason
         print(f"The program has stopped. The stop reason: {error}.")
-    for index, chunk in enumerate(chunks):
+    for index, chunk in enumerate(chunks_list):
         print(f"=========CHUNK {index}=========\n")
         print(f"{chunk}\n")
         print(f"---------------------------------\n")

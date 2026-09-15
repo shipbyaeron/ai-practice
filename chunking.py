@@ -68,6 +68,9 @@ def chunks_by_section(filepath:str) -> list[str]:
     with open(filepath, "r", encoding="utf-8-sig") as f:
         content = f.read()
 
+    para = [line for line in content.split("\n\n") if line.strip()]
+    article_title = para[0]
+
     sections = content.split("—--------------------")
 
     for section in sections:
@@ -82,8 +85,20 @@ def chunks_by_section(filepath:str) -> list[str]:
                     final_parts.extend(split_k)
             title = final_parts[0]
             section_length = len(final_parts)
-            for i in range (1, section_length):
-                final_text = f"{title}\n\n{final_parts[i]}"
-                chunks.append(final_text)
-    
-    return chunks
+            i = 1
+            while i < section_length:
+                current_group = [final_parts[i]]
+                current_length = word_count(final_parts[i])
+                j = i + 1
+                while j < section_length:
+                    next_length = word_count(final_parts[j])
+                    if current_length + next_length > WORD_LIMIT:
+                        break
+                    current_group.append(final_parts[j])
+                    current_length += next_length
+                    j += 1
+                merged_text = " ".join(current_group)
+                text_to_embedded = f"{title}\n\n{merged_text}"
+                chunks.append(text_to_embedded)
+                i = j
+    return (article_title, chunks)

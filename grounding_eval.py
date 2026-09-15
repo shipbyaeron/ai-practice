@@ -20,7 +20,15 @@ IN_SOURCE_EVAL_SET = [
     {"question": 'What percentage does the pool take as swap fees in the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
         "must_contain": [["0.0005%"]]},
     {"question": 'In the Merkl incentives of the “wnAUSD-wnUSDC-wnUSDT0” strategy, which tokens are used to pay the rewards?',
-        "must_contain": [["DUST"], ["WMON"]]}
+        "must_contain": [["DUST"], ["WMON"]]},
+    {"question": 'How much is Steakhouse Financial managing now in total assets?',
+        "must_contain": [["$2B", "2B", "two billion", "2 billion", "$2 billion"]]},
+    {"question": 'how do I loop USDT0 on Aave?',
+        "must_contain": [["deBridge"], ["Monad"], ["1-2 loop", "1-2"]]},
+    {"question": 'what is the low risk stablecoin strategy on Avalanche?',
+        "must_contain": [["USDT Vault"], ["Benqi"]]},
+    {"question": '"What are the yield sources of the sUSDai"',
+        "must_contain": [["US T-Bills", "T-Bills", "Treasury Bills"], ["Interest paid by GPU infrastructure borrowers", "GPU infrastructure borrowers"]]},
 ]
 
 OUT_OF_SOURCE_EVAL_SET = [

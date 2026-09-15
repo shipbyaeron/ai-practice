@@ -1,6 +1,7 @@
 import os
 import anthropic
 import requests
+import re
 
 from dotenv import load_dotenv
 from rag_basic import search_articles
@@ -42,7 +43,8 @@ def get_pnl():
 # USER_QUESTION = "Am I up or down on my portfolio?"
 # USER_QUESTION = "What does the Yield Radar say about the Balancer audit?"
 # USER_QUESTION = "How many strategies are there in the May 22 Yield Radar? What are they and which chains are the strategies running on?"
-USER_QUESTION = "Who created Bitcoin"
+# USER_QUESTION = "Who created Bitcoin"
+USER_QUESTION = "How do I loop USDT0 on Aave?"
 
 
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_KEY")
@@ -58,6 +60,8 @@ TOOL_FUNCTIONS = {
 SYSTEM_PROMPT = (
     '[ROLE]: You are my assisstant helping me answer my questions.' 
     'Your knowledge is limited to the tools and the sources I give you.'
+    'For ANY question, you MUST call the search_articles first and search for the information before you can conclude you do not know. Never refuse without searching first.'
+    'If you do not do this, you are violating your role rules.'
     'For every questions, always use the search_articles tool and read all my research carefully from the top to the bottom to see if the information you need to answer the question is there.' 
     'You have to make sure you understand the meaning of the whole article and the question before answering any questions.'
     'If you do not find the information, read it the second time. Some information might be buried in my research since it is often a long article'
@@ -77,6 +81,7 @@ SYSTEM_PROMPT = (
 
     '[CONSTRAINTS] Do not add any other type of information based on your training memory or general knowledge. ' 
     'If you do not have enough context to answer the question, I want the response only has 1 sentence which is "I do not have enough context to answer that question."'
+    'If you could not find the information, your ENTIRE response should be that only one sentece. Nothing more before or after it.'
     'Otherwise, if you have enough context to answer it, do not hesitate to give more information (limit to the knowledge and tool result you have)'
 )
 
@@ -125,7 +130,9 @@ tools = [
     },
     {
         "name": "search_articles",
-        "description": ("When you need to search for information in my own crypto writing research, use this tool."
+        "description": ("Search for users' crypto research for any type of crypto questions regardless the topic."
+        "It could be about companies, strategies, defi, protocols, KOLs, numbers, etc. Anything that is crypto-related."
+        "Always try this first before saying you do not know."
         "The output of this tool is top few paragraphs that have the information you need."
         "Use only that information to answer the question"),
         "input_schema": {
@@ -134,20 +141,25 @@ tools = [
                 "user_question": {
                     "type": "string",
                     "description": "the user's original question"
-                }
+                },
             },
             "required": ["user_question"]
         },
     }
 ]
 
-def run_agent(user_question, verbose=False):
+def run_agent(user_question, verbose=False, return_resources=False):
     messageList = [{"role": "user","content": user_question}]
     turn = 0
+    sources_list = []
     while True:
         turn += 1
         if turn > 10:
-            return f"There has been too many loops already :( Pls check the question logic or tools and run again."
+            error_message = "There has been too many loops already :( Pls check the question logic or tools and run again."
+            if return_resources:
+                return (error_message, [])
+            else:
+                return f"{error_message}"
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -171,6 +183,11 @@ def run_agent(user_question, verbose=False):
                         fn = TOOL_FUNCTIONS[block.name] 
                         try:
                             api_result = fn(**block.input)
+                            pattern = r"> Source:\s*(.*?)\s*> Chunk content:"
+                            matches = re.findall(pattern, api_result, re.DOTALL) 
+                            for match in matches:
+                                if match not in sources_list:
+                                    sources_list.append(match)
                             is_error = False
                         except ToolError as e:
                             api_result = str(e)
@@ -190,13 +207,20 @@ def run_agent(user_question, verbose=False):
                 if block.type == "text":
                     texts.append(block.text)
             final_text = "".join(texts)
-            return final_text
+            if return_resources:
+                return (final_text, sources_list)
+            else:
+                return final_text
         else:
             error = response.stop_reason
-            return f"The program has stopped. The stop reason is {error}."
+            error_message = f"The program has stopped. The stop reason is {error}."
+            if return_resources:
+                return (error_message, [])
+            else:
+                return f"{error_message}"
 
 def main():
-    final_text = run_agent(USER_QUESTION, verbose=True)
+    final_text = run_agent(USER_QUESTION, verbose=True, return_resources=False)
     print(final_text)
 
 if __name__ == "__main__":
