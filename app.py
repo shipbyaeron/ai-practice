@@ -9,6 +9,22 @@ except Exception:
 
 from tool_calling import run_agent
 
+STREAMLIT_APP_PASSWORD = os.getenv("STREAMLIT_APP_PASSWORD")
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.subheader("Login")
+    password = st.text_input("Enter password:", type="password")
+    if st.button("Login"):
+        if password == STREAMLIT_APP_PASSWORD:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password. Pls try again!")
+    st.stop()
+
 st.title("Crypto Research Assistant")
 
 st.subheader("What do you want to ask today?")
