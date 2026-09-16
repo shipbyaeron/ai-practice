@@ -40,8 +40,43 @@ chunks_list = [chunks_infor[i]["chunk_content"] for i in range (0, len(chunks_in
 
 chunks_embedded = model.encode(chunks_list)
 
+def expand_query(user_question: str) -> str:
+    SYSTEM_PROMPT = (
+        "[ROLE]:"
+        "You will receive a question about crypto."
+        "Your main role is to rewrite the question so that in the next step, the model's retrieval could rank the chunks better because it could understand the question better."
+
+        "[INSTRUCTION]:"
+        "You will imagine what the answer looks like for that question. "
+        "The answer you think about will have the terms that haven't existed in the original question. Include those terms in the rewrited one."
+        "You have to keep the original idea and intent of the question."
+        "You can use the domain synonyms and keywords that would actually appeared in my research."
+        "Your response should only be the rewrited question. Nothing else."
+        )
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        system=SYSTEM_PROMPT,
+        messages=[
+            {"role": "user",
+            "content": user_question}
+        ]
+    )
+
+    if response.stop_reason == "end_turn":
+        text = []
+        for block in response.content:
+            if block.type == "text":
+                text.append(block.text)
+        final_question = " ".join(text)
+        return final_question
+    else:
+        error = response.stop_reason
+        raise ValueError(f"Something went wrong with the expand_query function. Stop reason error: {error}. Pls check!")
+
 def search_articles(user_question: str):
-    question_embedded = model.encode(user_question)
+    question_embedded = model.encode(expand_query(user_question))
     all_similarity = util.cos_sim(chunks_embedded, question_embedded)
     scores_data = all_similarity.squeeze()
     indices = torch.topk(scores_data, k=NUM_TOP_CHUNKS).indices
@@ -89,4 +124,5 @@ def main():
         print(f"---------------------------------\n")
 
 if __name__ == "__main__":
-    main()
+    print(expand_query("When will you know you have finished setting up the “wnAUSD-wnUSDC-wnUSDT0” strategy?"))
+    # main()

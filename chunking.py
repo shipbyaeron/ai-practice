@@ -65,6 +65,7 @@ def build_chunks(filepath: str) -> list[str]:
 def chunks_by_section(filepath:str) -> list[str]:
     chunks = []
     WORD_LIMIT = 150
+    OVER_LAP = 1
     with open(filepath, "r", encoding="utf-8-sig") as f:
         content = f.read()
 
@@ -90,15 +91,20 @@ def chunks_by_section(filepath:str) -> list[str]:
                 current_group = [final_parts[i]]
                 current_length = word_count(final_parts[i])
                 j = i + 1
+                move = 0
                 while j < section_length:
                     next_length = word_count(final_parts[j])
                     if current_length + next_length > WORD_LIMIT:
                         break
                     current_group.append(final_parts[j])
                     current_length += next_length
+                    move += 1
                     j += 1
                 merged_text = " ".join(current_group)
                 text_to_embedded = f"{title}\n\n{merged_text}"
                 chunks.append(text_to_embedded)
-                i = j
+                if move < OVER_LAP:
+                    i = j
+                else:
+                    i = j - OVER_LAP
     return (article_title, chunks)

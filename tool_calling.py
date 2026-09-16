@@ -215,7 +215,7 @@ def run_agent(user_question, verbose=False, return_resources=False):
             error = response.stop_reason
             error_message = f"The program has stopped. The stop reason is {error}."
             if return_resources:
-                return (error_message, [])
+                return (error, [])
             else:
                 return f"{error_message}"
 

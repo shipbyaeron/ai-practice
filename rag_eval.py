@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import anthropic
 import torch
 from chunking import build_chunks, chunks_by_section
+from rag_basic import chunks_list, chunks_embedded, expand_query
 
 load_dotenv()
 
@@ -36,11 +37,11 @@ EVAL_SET_CHUNKS_BY_SECTION = [
         "must_contain": [["Swap fees"], ["Yield-bearing stablecoins", "yield bearing stablecoins"], ["Merkl incentives", "Merkl"]]},
     {"question": 'How much yield does Merlk incentives contribute to the “wnAUSD-wnUSDC-wnUSDT0” strategy?',
         "must_contain": [["10-11%", "ten to eleven percent", "10 to 11%", "10 - 11%", "10% to 11%"]]},
+    {"question": '"What are the yield sources of the sUSDai"',
+        "must_contain": [["US T-Bills", "T-Bills", "Treasury Bills"], ["Interest paid by GPU infrastructure borrowers", "GPU infrastructure borrowers"]]},
 ]
 
-chunks = chunks_by_section("yield_radar.txt")
-chunks_embedded = model.encode(chunks)
-chunks_clean = [chunk.strip().lower() for chunk in chunks]
+chunks_clean = [chunk.strip().lower() for chunk in chunks_list]
 
 TOP_K = 3
 deepest_chunks_rank = []
@@ -54,7 +55,7 @@ for i in range (0, len(EVAL_SET_CHUNKS_BY_SECTION)):
     question = EVAL_SET_CHUNKS_BY_SECTION[i]["question"]
     must_contain = EVAL_SET_CHUNKS_BY_SECTION[i]["must_contain"]
     must_contain_clean = [[k.strip().lower() for k in sublist] for sublist in must_contain]
-    question_embedded = model.encode(question)
+    question_embedded = model.encode(expand_query(question))
     similarity = util.cos_sim(chunks_embedded, question_embedded)
     scores = similarity.squeeze()
 
