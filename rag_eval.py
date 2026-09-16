@@ -1,10 +1,9 @@
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import util
 import os
 from dotenv import load_dotenv
 import anthropic
 import torch
-from chunking import build_chunks, chunks_by_section
-from rag_basic import chunks_list, chunks_embedded, expand_query
+from rag_basic import chunks_list, chunks_embedded, expand_query, model
 
 load_dotenv()
 
@@ -13,8 +12,6 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_KEY")
 client = anthropic.Anthropic(
     api_key=ANTHROPIC_KEY,
 )
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
 EVAL_SET_CHUNKS_BY_SECTION = [
     {"question": 'What are the yield sources of the “Flagship USDC SuperVault”?',

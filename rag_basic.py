@@ -4,6 +4,7 @@ import anthropic
 import os
 from dotenv import load_dotenv
 from chunking import chunks_by_section
+import boto3
 
 load_dotenv()
 
@@ -11,11 +12,20 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_KEY")
 NUM_TOP_CHUNKS = 3
 user_question = "What is the price of Bitcoin today?"
 
+S3_BUCKET_NAME = os.getenv("S3_BUCKET")
 FOLDER_NAME = "articles"
-FILE_NAME = ["yield_radar_may08.txt", "yield_radar_may22.txt", "yield_radar_june19.txt", "yield_radar_july09.txt"]
+
+s3 = boto3.client("s3")
+
 FILE_PATH = []
+FILE_NAME = ["yield_radar_may08.txt", "yield_radar_may22.txt", "yield_radar_june19.txt", "yield_radar_july09.txt"]
+
+os.makedirs(FOLDER_NAME, exist_ok=True)
+
 for file_name in FILE_NAME:
     file_path = os.path.join(FOLDER_NAME, file_name)
+    s3.download_file(S3_BUCKET_NAME, file_name, file_path)
+    
     FILE_PATH.append(file_path)
 
 client = anthropic.Anthropic(
@@ -124,5 +134,4 @@ def main():
         print(f"---------------------------------\n")
 
 if __name__ == "__main__":
-    print(expand_query("When will you know you have finished setting up the “wnAUSD-wnUSDC-wnUSDT0” strategy?"))
-    # main()
+    main()

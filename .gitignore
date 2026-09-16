@@ -4,3 +4,5 @@ yield_radar.txt
 __pycache__/
 articles/
 .DS_Store
+*accessKeys*
+*.numbers
