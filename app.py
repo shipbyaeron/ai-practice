@@ -1,4 +1,12 @@
 import streamlit as st
+import os
+
+try:
+    for _key in st.secrets:
+        os.environ[_key] = str(st.secrets[_key])
+except Exception:
+    pass
+
 from tool_calling import run_agent
 
 st.title("Crypto Research Assistant")
