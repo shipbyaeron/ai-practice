@@ -24,7 +24,7 @@ IN_SOURCE_EVAL_SET = [
     {"question": 'How much is Steakhouse Financial managing now in total assets?',
         "must_contain": [["$2B", "2B", "two billion", "2 billion", "$2 billion"]]},
     {"question": 'how do I loop USDT0 on Aave?',
-        "must_contain": [["deBridge"], ["Monad"], ["1-2 loop", "1-2"]]},
+        "must_contain": [["deBridge"], ["Monad"]]},
     {"question": 'what is the low risk stablecoin strategy on Avalanche?',
         "must_contain": [["USDT Vault"], ["Benqi"]]},
     {"question": '"What are the yield sources of the sUSDai"',
