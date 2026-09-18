@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from chunking import chunks_by_section
 import boto3
+import math
 
 load_dotenv()
 
@@ -50,6 +51,91 @@ chunks_list = [chunks_infor[i]["chunk_content"] for i in range (0, len(chunks_in
 
 chunks_embedded = model.encode(chunks_list)
 
+TOTAL_NUM_CHUNKS = len(chunks_infor)
+
+punctuation_list = [
+    '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', 
+    ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'
+]
+
+document_freqs = {}
+
+for idx, chunk in enumerate(chunks_list):
+    term_freqs = {}
+    terms = chunk.split()
+    chunk_length = len(terms)
+    terms_nodup = []
+    for term in terms:
+        clean_term = term.lower()
+        clean_term = clean_term.strip("".join(punctuation_list))
+        if clean_term not in term_freqs:
+            term_freqs[clean_term] = 1
+        else:
+            term_freqs[clean_term] += 1
+        if clean_term not in terms_nodup:
+            terms_nodup.append(clean_term)
+    for te in terms_nodup:
+        if te not in document_freqs:
+            document_freqs[te] = 1
+        else:
+            document_freqs[te] += 1
+    chunks_infor[idx]["term_freqs"] = term_freqs
+    chunks_infor[idx]["chunk_length"] = chunk_length
+
+AVGDL = 0
+
+for m in range(0, TOTAL_NUM_CHUNKS):
+    AVGDL += chunks_infor[m]["chunk_length"] / TOTAL_NUM_CHUNKS
+
+K1 = 1.5
+B = 0.75
+
+def keyword_search(user_question: str):
+    question_terms = user_question.split()
+    question_clean_term = []
+    overall_scores = []
+    term_idf = {}
+    for term in question_terms:
+        clean_term = term.lower()
+        clean_term = clean_term.strip("".join(punctuation_list))
+        if clean_term not in question_clean_term:
+            question_clean_term.append(clean_term)
+    for term in question_clean_term:
+        if term in document_freqs:
+            n_t = document_freqs[term]  # n(t) for term t  
+            # only calculate and add to the dict the term that existed in the corpus
+            # if it exist in the question but not in the corpus, just leave it. we won't calculate its score either
+            term_idf[term] = math.log((TOTAL_NUM_CHUNKS - n_t + 0.5) / (n_t + 0.5) + 1)
+    for seri in range(0, TOTAL_NUM_CHUNKS):
+        chunk_detail = chunks_infor[seri]  # chunk D detail
+        score_ques_D = 0
+        for term in question_clean_term:
+            if term in chunk_detail["term_freqs"]:
+                f_t_D = chunk_detail["term_freqs"][term] # f(t,D) for term t in chunk D
+                chunk_D_length = chunk_detail["chunk_length"]   # |D| 
+                IDF_t = term_idf[term]
+                score_t_D = (IDF_t * (f_t_D * (K1 + 1)) / (f_t_D + K1 * (1 - B + B * chunk_D_length / AVGDL))) 
+                score_ques_D += score_t_D
+        overall_scores.append({
+            "chunk_infor_indice": seri,
+            "chunk_content": chunk_detail["chunk_content"],
+            "article_title": chunk_detail["article_title"],
+            "score": score_ques_D
+        })
+    sorted_chunks = sorted(overall_scores, key=lambda x: x["score"], reverse=True)
+    keyword_sorted = {}
+    for s in range (0, len(sorted_chunks)):
+        idx = sorted_chunks[s]["chunk_infor_indice"]
+        if idx not in keyword_sorted:
+            keyword_sorted[idx] = s + 1
+    # top_k_chunks = []
+    # for s in range(0,NUM_TOP_CHUNKS):
+    #     source = sorted_chunks[s]["article_title"]
+    #     chunk_content = sorted_chunks[s]["chunk_content"]
+    #     top_k_chunks.append(f"> Source: {source}\n> Chunk content: {chunk_content}")
+    # context = "\n-----------\n".join(top_k_chunks)
+    return keyword_sorted
+
 def expand_query(user_question: str) -> str:
     SYSTEM_PROMPT = (
         "[ROLE]:"
@@ -85,20 +171,49 @@ def expand_query(user_question: str) -> str:
         error = response.stop_reason
         raise ValueError(f"Something went wrong with the expand_query function. Stop reason error: {error}. Pls check!")
 
-def search_articles(user_question: str):
+def semantic_search(user_question: str):
     question_embedded = model.encode(expand_query(user_question))
     all_similarity = util.cos_sim(chunks_embedded, question_embedded)
     scores_data = all_similarity.squeeze()
-    indices = torch.topk(scores_data, k=NUM_TOP_CHUNKS).indices
-    top_chunks = []
-    sources_list = []
-    for indice in indices:
-        idx = indice.item()
-        chunk = chunks_infor[idx]["chunk_content"]  
-        source = chunks_infor[idx]["article_title"]
-        sources_list.append(source)
-        top_chunks.append(f"> Source: {source}\n> Chunk content: {chunk}")
-    context = "\n-----------\n".join(top_chunks)
+    indices_all = torch.sort(scores_data, descending=True).indices
+    semantic_sorted = {}
+    for num in range(0, len(indices_all)):
+        idx = indices_all[num].item()
+        if idx not in semantic_sorted:
+            semantic_sorted[idx] = num + 1
+    return semantic_sorted
+
+RRF_K = 60
+
+def hybrid_search(user_question: str):
+    rrf_list = []
+    keyword_sorted_list = keyword_search(user_question)
+    semantic_sorted_list = semantic_search(user_question)
+    for idx in range(0, TOTAL_NUM_CHUNKS):
+        chunk_content = chunks_infor[idx]["chunk_content"]
+        article_title = chunks_infor[idx]["article_title"]
+        keyword_rank = keyword_sorted_list[idx]
+        semantic_rank = semantic_sorted_list[idx]
+        rrf_score = 1/(RRF_K + keyword_rank) + 1/(RRF_K + semantic_rank)
+        rrf_list.append({
+            "chunk_infor_indice": idx,
+            "chunk_content": chunk_content,
+            "chunk_source": article_title,
+            "keyword_rank": keyword_rank,
+            "semantic_rank": semantic_rank,
+            "rrf_score": rrf_score
+        })
+    sorted_rrf_list = sorted(rrf_list, key=lambda x: x["rrf_score"], reverse=True)
+    top_k_chunks = []
+    for s in range(0, NUM_TOP_CHUNKS):
+        source = sorted_rrf_list[s]["chunk_source"]
+        chunk_content = sorted_rrf_list[s]["chunk_content"]
+        top_k_chunks.append(f"> Source: {source}\n> Chunk content: {chunk_content}")
+    context = "\n-----------\n".join(top_k_chunks)
+    return context
+
+def search_articles(user_question: str):
+    context = hybrid_search(user_question)
     return context
 
 def main():
