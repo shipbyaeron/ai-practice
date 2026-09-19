@@ -4,7 +4,7 @@ import requests
 import re
 
 from dotenv import load_dotenv
-from rag_basic import search_articles
+from rag_basic import search_articles, report_list
 
 load_dotenv()
 
@@ -142,6 +142,15 @@ tools = [
                     "type": "string",
                     "description": "the user's original question"
                 },
+                "report": {
+                    "type": "string",
+                    "enum": report_list,
+                    "description": 
+                    ("this is the date of the yield radar report."
+                     "i) you only pass this if in the question, user mentioned a specific date or report"
+                     "ii) if it's a general question, omit it"
+                     "iii) you have to map the key with the exact date report (ex 'may22' is the May 22 report)")
+                }
             },
             "required": ["user_question"]
         },

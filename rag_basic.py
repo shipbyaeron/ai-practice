@@ -36,14 +36,21 @@ client = anthropic.Anthropic(
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 chunks_infor = []
+report_list = []
 
-for filepath in FILE_PATH:
-    article_title, filepath_chunks = chunks_by_section(filepath)
+for file_path in FILE_PATH:
+    article_title, filepath_chunks = chunks_by_section(file_path)
+    file_name = os.path.basename(file_path)
+    name_only, extension = os.path.splitext(file_name)
+    # Split the file name by _ and take the last part (the date)
+    date = name_only.split("_")[-1]
+    report_list.append(date)
     for chunk in filepath_chunks:
         chunks_infor.append({
             "chunk_content": chunk,
-            "file_path": filepath,
-            "article_title": article_title
+            "file_path": file_path,
+            "article_title": article_title,
+            "report": date
         })
 
 # List of chunks of every articles without the file_path
@@ -185,35 +192,45 @@ def semantic_search(user_question: str):
 
 RRF_K = 60
 
-def hybrid_search(user_question: str):
+def hybrid_search(user_question: str, report=None):
     rrf_list = []
     keyword_sorted_list = keyword_search(user_question)
     semantic_sorted_list = semantic_search(user_question)
     for idx in range(0, TOTAL_NUM_CHUNKS):
-        chunk_content = chunks_infor[idx]["chunk_content"]
-        article_title = chunks_infor[idx]["article_title"]
         keyword_rank = keyword_sorted_list[idx]
         semantic_rank = semantic_sorted_list[idx]
         rrf_score = 1/(RRF_K + keyword_rank) + 1/(RRF_K + semantic_rank)
         rrf_list.append({
             "chunk_infor_indice": idx,
-            "chunk_content": chunk_content,
-            "chunk_source": article_title,
+            "chunk_content": chunks_infor[idx]["chunk_content"],
+            "chunk_source": chunks_infor[idx]["article_title"],
+            "report": chunks_infor[idx]["report"],
             "keyword_rank": keyword_rank,
             "semantic_rank": semantic_rank,
             "rrf_score": rrf_score
         })
     sorted_rrf_list = sorted(rrf_list, key=lambda x: x["rrf_score"], reverse=True)
+    if report:
+        report = report.strip().lower()
+        if report not in report_list:
+            return sorted_rrf_list
+        else:
+            sorted_filtered_rrf_list = []
+            for r in range(0, len(sorted_rrf_list)):
+                if sorted_rrf_list[r]["report"] == report:
+                    sorted_filtered_rrf_list.append(sorted_rrf_list[r])
+            return sorted_filtered_rrf_list
+    else:
+        return sorted_rrf_list
+
+def search_articles(user_question: str, report=None):
+    sorted_rrf_list = hybrid_search(user_question, report)[:NUM_TOP_CHUNKS]
     top_k_chunks = []
-    for s in range(0, NUM_TOP_CHUNKS):
+    for s in range(0, len(sorted_rrf_list)):
         source = sorted_rrf_list[s]["chunk_source"]
         chunk_content = sorted_rrf_list[s]["chunk_content"]
         top_k_chunks.append(f"> Source: {source}\n> Chunk content: {chunk_content}")
     context = "\n-----------\n".join(top_k_chunks)
-    return context
-
-def search_articles(user_question: str):
-    context = hybrid_search(user_question)
     return context
 
 def main():
@@ -249,4 +266,6 @@ def main():
         print(f"---------------------------------\n")
 
 if __name__ == "__main__":
-    main()
+    result = hybrid_search('Who did the latest audit for Balancer?', report=None)
+    print(result)
+    # main()
